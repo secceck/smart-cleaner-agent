@@ -14,7 +14,7 @@ Browser (Streamlit :8501) → FastAPI (:8000) → FreeLLMAPI (:3001) Docker
 |------|--------|
 | 后端框架 | FastAPI + LangChain + LangGraph |
 | 智能体模式 | LangGraph ReAct 循环推理 (Think → Act → Observe) |
-| 大模型网关 | FreeLLMAPI（Docker 本地容器，兼容 OpenAI 接口） |
+| 大模型网关 | [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi/tree/main)（Docker 本地容器，兼容 OpenAI 接口） |
 | 向量存储 | Chroma 本地文件持久化 |
 | 文本处理 | RecursiveCharacterTextSplitter 递归分片 |
 | 前端 | Streamlit 轻量化 Python Web 页面 |
@@ -85,7 +85,14 @@ weather_query─┘           │                      │                  │ 
 2. **Python 3.14+** + **uv** 包管理器
 3. 端口 3001、8000、8501 未被占用
 
-### 1. 启动 FreeLLMAPI
+### 1. 部署 FreeLLMAPI 模型网关
+
+> 📦 FreeLLMAPI GitHub: [https://github.com/tashfeenahmed/freellmapi](https://github.com/tashfeenahmed/freellmapi/tree/main)
+>
+> FreeLLMAPI 是一个兼容 OpenAI 接口的本地大模型网关，支持接入 60+ 模型供应商（OpenAI / Anthropic / DeepSeek / 阿里百炼 / 硅基流动 等），统一暴露为 `/v1/chat/completions` 和 `/v1/embeddings` 端点。
+> 本项目通过 FreeLLMAPI 实现模型的自动路由、故障转移和多模型聚合。
+
+#### 1.1 拉取并启动 Docker 容器
 
 ```bash
 docker run -d \
@@ -96,7 +103,68 @@ docker run -d \
   freellmapi:latest
 ```
 
-访问 `http://127.0.0.1:3001` 配置模型密钥，获取 API Token。
+| 参数 | 说明 |
+|------|------|
+| `-p 3001:3001` | 映射容器 3001 端口到宿主机 |
+| `--restart always` | Docker 启动时自动重启容器 |
+| `-v freellmapi-data:/app/data` | 持久化 API Key 配置和数据库 |
+
+#### 1.2 配置模型供应商（Web UI）
+
+启动后访问 **http://127.0.0.1:3001** 进入管理后台：
+
+1. **添加 API Key**：点击 `Provider Keys` → 输入各模型供应商的 API Key
+   - OpenAI: `sk-xxx`
+   - Anthropic: `sk-ant-xxx`
+   - 阿里百炼: `sk-xxx`
+   - 硅基流动: `sk-xxx`
+   - DeepSeek: `sk-xxx`
+   - 等等...
+2. **启用/禁用供应商**：在 `Providers` 页面开关对应供应商
+3. **获取 FreeLLMAPI Token**：在 `Settings` → `API Keys` 生成一个 Token，填入 `server/.env` 的 `FREELLMAPI_API_KEY`
+
+#### 1.3 模型路由器说明
+
+FreeLLMAPI 提供两种路由模式：
+
+| 路由器 | 模型名 | 说明 |
+|--------|--------|------|
+| **Auto Router** | `auto` | 自动选择最快的可用模型，内部处理故障转移 |
+| **Fusion Panel** | `fusion` | 多模型并行回答，由一个 Judge 模型投票选出最佳答案 |
+
+> ⚠️ 本项目**自动过滤**了 `auto` 和 `fusion`（它们是路由器不是真实模型），直接使用后端真实模型名（如 `deepseek-v4-pro`、`qwen3-coder-480b`）。
+
+#### 1.4 验证模型服务
+
+```bash
+# 查看可用模型列表
+curl http://127.0.0.1:3001/v1/models \
+  -H "Authorization: 你的FreeLLMAPI-Token"
+
+# 测试对话
+curl http://127.0.0.1:3001/v1/chat/completions \
+  -H "Authorization: 你的FreeLLMAPI-Token" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"auto","messages":[{"role":"user","content":"你好"}]}'
+
+# 测试嵌入模型
+curl http://127.0.0.1:3001/v1/embeddings \
+  -H "Authorization: 你的FreeLLMAPI-Token" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"text-embedding-3-small","input":"测试文本"}'
+```
+
+#### 1.5 常用模型推荐
+
+| 用途 | 推荐模型 | 说明 |
+|------|---------|------|
+| 聊天/对话 | `deepseek-v4-pro` | DeepSeek V4 Pro，综合能力强 |
+| 代码/逻辑 | `qwen3-coder-480b` | Qwen3 Coder 480B，代码能力强 |
+| 快速响应 | `deepseek-v4-flash` | 轻量快速版本 |
+| 多模态 | `gemini-2.5-flash` | Gemini 2.5 Flash，支持图片 |
+| 嵌入 | `text-embedding-3-small` | OpenAI 兼容嵌入模型，1024 维 |
+
+> 💡 **启动时健康检查**：本项目启动时会自动探测前 8 个模型的可用性，正常模型排到队首优先使用，不可用模型排到队尾。
 
 ### 2. 配置环境变量
 
