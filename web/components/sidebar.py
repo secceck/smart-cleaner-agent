@@ -26,6 +26,40 @@ def render_sidebar():
 
         st.divider()
 
+        # ---- 手动城市输入 ----
+        location_set = st.session_state.get("location_set", False)
+        current_city = st.session_state.get("current_city", "")
+        location_pending = st.session_state.get("_location_pending", False)
+
+        # 定位未完成时默认展开面板，让用户看到状态
+        expander_default = not location_set
+        with st.expander("📍 我的位置", expanded=expander_default):
+            if location_set and current_city:
+                st.success(f"✅ 当前城市: **{current_city}**")
+            elif location_pending:
+                st.info("⏳ 正在获取定位…（如未生效请手动输入）")
+            else:
+                st.caption("若自动定位未生效，可在此手动输入城市")
+
+            manual_city = st.text_input(
+                "输入城市名",
+                value="",
+                placeholder="例如: 北京、上海浦东、深圳",
+                key="manual_city_input",
+                label_visibility="collapsed",
+            )
+            if manual_city and manual_city != st.session_state.get("_last_manual_city", ""):
+                st.session_state["_last_manual_city"] = manual_city
+                thread_id = st.session_state.get("thread_id", "")
+                if thread_id:
+                    if api_client.set_location(thread_id, manual_city):
+                        st.session_state["location_set"] = True
+                        st.session_state["current_city"] = manual_city
+                        st.toast(f"📍 位置已设置为: {manual_city}", icon="✅")
+                        st.rerun()
+                    else:
+                        st.warning("设置位置失败，请检查后端服务")
+
         # ---- 会话列表 ----
         st.subheader("📋 会话列表")
         sessions = api_client.get_sessions()

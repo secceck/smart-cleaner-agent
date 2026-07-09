@@ -124,22 +124,13 @@ def main():
     # 初始化会话状态
     init_session_state()
 
-    # ---- 侧边栏 ----
-    render_sidebar()
-
-    # ---- 主内容区 ----
-    st.title("🧹 扫地机器人智能客服")
-
-    # 如果没有活跃会话，自动创建或提示
+    # ---- 确保 thread_id 存在（侧边栏依赖它做位置展示）----
     if not st.session_state.thread_id:
-        # 尝试自动创建会话
         sessions = api_client.get_sessions()
         if sessions:
-            # 选择最近的会话
             st.session_state.thread_id = sessions[0]["thread_id"]
             load_messages_from_db(st.session_state.thread_id)
         else:
-            # 创建第一个会话
             result = api_client.create_session("新的聊天")
             if result:
                 st.session_state.thread_id = result["thread_id"]
@@ -148,9 +139,25 @@ def main():
                 st.info("启动命令: `cd server && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000`")
                 st.stop()
 
-    # 注入位置获取脚本（必须在 thread_id 确定之后）
     current_thread_id = st.session_state.thread_id
+
+    # ---- 注入位置脚本 + 轮询后端（必须在 render_sidebar 之前）----
     inject_location_script(current_thread_id, api_client.API_BASE_URL)
+    if not st.session_state.get("location_set"):
+        loc = api_client.get_location(current_thread_id)
+        if loc and loc.get("city"):
+            st.session_state["location_set"] = True
+            st.session_state["current_city"] = loc["city"]
+            st.session_state["_location_pending"] = False
+        else:
+            # JS 尚未完成（首次加载），标记等待中，下次交互时会自动重试
+            st.session_state["_location_pending"] = True
+
+    # ---- 侧边栏（位置检查已在上面完成）----
+    render_sidebar()
+
+    # ---- 主内容区 ----
+    st.title("🧹 扫地机器人智能客服")
 
     # ---- 消息历史展示 ----
     chat_container = st.container()

@@ -38,12 +38,28 @@ Browser (Streamlit :8501) → FastAPI (:8000) → FreeLLMAPI (:3001) Docker
 - Top-K 相似度检索（默认 K=3）
 - **内置知识库文档**：`data/knowledge/smart_cleaner_manual.txt`（5 款产品型号、10 个错误码及解决方案、保养指南、FAQ）
 
+### 位置获取（四级降级自动定位）
+
+用户打开页面后，系统自动获取城市名：
+
+```
+浏览器 GPS ──→ 后端反查 Photon / BigDataCloud / Nominatim
+                  ↓ 失败
+              后端 IP 定位 (ip-api.com)
+                  ↓ 失败
+              侧边栏手动输入
+```
+
+- **服务端反查**：GPS 坐标 → 城市名，解决国内访问 Nominatim 超时、ipapi.co CORS 拦截问题
+- **自动刷新**：JS 定位成功 → `window.top.location.reload()` → 侧边栏即时展示「✅ 当前城市」
+- **手动兜底**：侧边栏展开「📍 我的位置」面板，可直接输入城市名
+
 ### 内置工具集（7 个）
 
 | 工具 | 功能 | 数据来源 |
 |------|------|---------|
 | `weather_query` | 查询城市实时天气 + 7日预报 + 气象预警（温度/湿度/AQI/风力/能见度/降雨量） | 中国天气网（双 API 互补）|
-| `get_location` | 获取用户地理位置 | 浏览器定位 / 手动输入 |
+| `get_location` | 获取用户地理位置 | 浏览器 GPS → 服务端反查 → IP 定位 → 手动输入（四级降级）|
 | `get_user_id` | 获取当前会话用户标识 | 会话上下文 |
 | `query_usage_records` | 查询设备清扫使用记录（时长/面积/耗材/故障/电池） | 模拟数据生成 |
 | `product_info_search` | 产品参数、功能说明、型号对比检索 | RAG 知识库 |
@@ -289,7 +305,8 @@ smart-cleaner-agent/
 | `DELETE`| `/api/v1/chat/messages?thread_id=` | 清空消息 |
 | `POST` | `/api/v1/knowledge/upload` | 上传知识库文档 |
 | `POST` | `/api/v1/knowledge/search` | 知识库检索 |
-| `POST` | `/api/v1/location` | 设置用户位置（前端调用）|
+| `POST` | `/api/v1/location` | 设置用户位置（前端 JS 自动上报 coords + 服务端反查）|
+| `GET` | `/api/v1/location?thread_id=` | 获取会话位置缓存（前端轮询）|
 | `GET` | `/api/v1/health` | 健康检查 |
 
 ## 常见问题
@@ -343,3 +360,5 @@ kill -9 <PID>
 | 天气显示昨天日期 | `fctime` 发布时间被误读 | 使用 `dataSK.date` + 明确标注 |
 | 天气查不到小城市 | 仅静态映射表 | 动态搜索 API 兜底 |
 | 知识库匹配度显示错误 | Chroma 距离值未转换 | 转为 0-100% 匹配度 |
+| 浏览器定位获取不到城市 | JS 直连 Nominatim 超时 + ipapi.co CORS 拦截 | 改为服务端反查 Photon/BigDataCloud + 服务端 IP 定位 |
+| 侧边栏位置不显示 | 轮询在侧边栏渲染之后执行 | 调整顺序 + 自动刷新机制 |

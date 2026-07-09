@@ -7,7 +7,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -24,7 +24,12 @@ from app.models.database import MessageRepository, SessionRepository, init_datab
 from app.models.schemas import HealthResponse
 from app.rag.loader import process_document
 from app.rag.vectorstore import get_vectorstore
-from app.tools.location import set_location_cache
+from app.tools.location import (
+    get_location_cache,
+    resolve_city_from_coords,
+    resolve_city_from_ip,
+    set_location_cache,
+)
 
 logger = get_logger(__name__)
 
@@ -245,10 +250,44 @@ class LocationSetRequest(BaseModel):
 
 
 @app.post("/api/v1/location", tags=["system"])
-async def set_location(body: LocationSetRequest):
-    """设置用户地理位置信息（由前端调用）"""
-    set_location_cache(body.thread_id, body.city, body.lat, body.lng)
-    return {"status": "ok", "city": body.city}
+async def set_location(body: LocationSetRequest, request: Request):
+    """
+    设置用户地理位置信息（由前端 JS 或手动输入调用）。
+    优先使用前端传入的 city；若为空则由服务端完成坐标反查和 IP 定位。
+    """
+    city = body.city
+    lat = body.lat
+    lng = body.lng
+
+    # 1. 如果前端已带 city（手动输入或旧版 JS），直接使用
+    if city:
+        set_location_cache(body.thread_id, city, lat, lng)
+        return {"status": "ok", "city": city}
+
+    # 2. 服务端反查 GPS 坐标 → 城市名
+    if lat and lng:
+        city = await resolve_city_from_coords(lat, lng)
+
+    # 3. 降级：服务端 IP 定位
+    if not city:
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        city = await resolve_city_from_ip(client_ip)
+
+    if city:
+        set_location_cache(body.thread_id, city, lat, lng)
+    else:
+        logger.warning(f"会话 {body.thread_id} 位置解析失败（坐标+IP均未命中）")
+
+    return {"status": "ok" if city else "not_found", "city": city}
+
+
+@app.get("/api/v1/location", tags=["system"])
+async def get_location(thread_id: str):
+    """获取当前会话的地理位置信息（由前端轮询）"""
+    loc = get_location_cache(thread_id)
+    if loc:
+        return {"status": "ok", "city": loc["city"], "lat": loc["lat"], "lng": loc["lng"]}
+    return {"status": "not_found", "city": None}
 
 
 # ============================================================

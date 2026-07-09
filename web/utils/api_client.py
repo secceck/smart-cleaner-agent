@@ -195,3 +195,20 @@ def set_location(thread_id: str, city: str, lat: float = 0.0, lng: float = 0.0) 
         return resp.status_code == 200
     except Exception:
         return False
+
+
+def get_location(thread_id: str) -> dict | None:
+    """从后端获取当前会话的地理位置缓存"""
+    try:
+        resp = requests.get(
+            _url("/location"),
+            params={"thread_id": thread_id},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "ok":
+                return {"city": data["city"], "lat": data.get("lat", 0), "lng": data.get("lng", 0)}
+        return None
+    except Exception:
+        return None

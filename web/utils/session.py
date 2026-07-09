@@ -13,7 +13,11 @@ def init_session_state():
         "sessions": [],                 # 全部会话列表
         "sidebar_need_refresh": False,  # 侧边栏是否需要刷新
         "user_city": None,              # 用户地理位置城市名
+        "location_set": False,          # 浏览器 JS 是否已上报位置
+        "current_city": "",             # 当前城市名（用于侧边栏展示）
+        "_location_pending": False,     # 等待浏览器 JS 定位结果中
         "report_mode": False,           # 是否为报告生成模式
+        "_last_manual_city": "",        # 防止重复提交手动城市输入
     }
 
     for key, default_value in defaults.items():
@@ -24,6 +28,10 @@ def init_session_state():
 def switch_session(thread_id: str):
     """切换到指定会话"""
     st.session_state.thread_id = thread_id
+    # 重置位置状态（新会话需要重新定位）
+    st.session_state.location_set = False
+    st.session_state.current_city = ""
+    st.session_state._location_pending = False
 
 
 def add_message(role: str, content: str, tool_name: str = None):
