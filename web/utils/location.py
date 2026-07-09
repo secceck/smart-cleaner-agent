@@ -82,4 +82,4 @@ def inject_location_script(thread_id: str, api_base: str):
     """在 Streamlit 页面中注入位置获取脚本"""
     script = get_location_script(thread_id, api_base)
     # height=1 确保 iframe 被渲染并执行 JS（height=0 在某些 Streamlit 版本中不渲染）
-    st.iframe(srcdoc=script, height=1, scrolling=False)
+    st.components.v1.html(script, height=1, scrolling=False)
